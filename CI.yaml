@@ -1,5 +1,5 @@
 trigger:
-- master
+- hit
 
 pool:
   vmImage: ubuntu-latest
