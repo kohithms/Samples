@@ -1,0 +1,47 @@
+trigger:
+  branches:
+    include:
+      - none
+    exclude:
+      - none
+
+pool:
+  vmImage: "ubuntu-latest"
+
+stages:
+  - stage: testing_example_app
+    displayName: Run testing flow for example app
+    #condition: or(eq(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.Reason'], 'Manual'))
+    jobs:
+    - job: unit_test_coverage
+      displayName: Run unit test
+      container:
+        image: python:3.10
+        
+      steps:
+        - task: Cache@2
+          displayName: Caching poetry
+          inputs:
+            key: 'python | "$(Agent.OS)" | example_app/poetry.lock'
+            path: '$(Build.sourcesdirectory)/PyTestCoverageReport/example_app/.venv'
+            restoreKeys: 'example_app/poetry.lock | "$(Agent.OS)"'
+
+        - script: |
+            pip3 install "poetry==1.3.1"
+            export PATH="$HOME/.local/bin:$PATH"
+            poetry config virtualenvs.in-project true
+            poetry install
+          workingDirectory: $(Build.sourcesdirectory)/PyTestCoverageReport/example_app
+          displayName: "Installing dependencies"
+          
+        - script: |
+            export PATH="$HOME/.local/bin:$PATH"
+            poetry run poe test-coverage-report-azure
+          workingDirectory: $(Build.sourcesdirectory)/PyTestCoverageReport/example_app
+          displayName: "Pytest Unit Test with Coverage"
+          continueOnError: False
+        - task: PublishCodeCoverageResults@1
+          inputs:
+            codeCoverageTool: Cobertura
+            summaryFileLocation: '$(Build.sourcesdirectory)/PyTestCoverageReport/example_app/coverage.xml'
+            reportDirectory: '$(Build.sourcesdirectory)/PyTestCoverageReport/example_app/html-cob'
