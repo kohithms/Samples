@@ -1,0 +1,12 @@
+trigger:
+- master
+
+pr: 
+ - master
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+- script: This is a Github Repo checkout
+  displayName: 'Github Repo checkout'
