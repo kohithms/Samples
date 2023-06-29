@@ -8,5 +8,9 @@ pool:
   vmImage: ubuntu-latest
 
 steps:
-- script: This is a Github Repo checkout
-  displayName: 'Github Repo checkout'
+- task: CmdLine@2
+  inputs:
+    script: |
+      echo Write your commands here
+      
+      echo Hello world
