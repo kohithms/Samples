@@ -1,0 +1,102 @@
+name: Generate PR Review Report Excel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  pr-review-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install openpyxl requests
+
+      - name: Generate PR report in Excel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p output
+
+          python <<EOF
+          import requests, openpyxl
+          from collections import defaultdict
+          from datetime import datetime
+
+          owner_repo = "${{ github.repository }}"
+          headers = {"Authorization": f"Bearer ${{ secrets.GITHUB_TOKEN }}"}
+          api_base = f"https://api.github.com/repos/{owner_repo}"
+          
+          def get_all_pages(url):
+              results = []
+              while url:
+                  resp = requests.get(url, headers=headers)
+                  if resp.status_code != 200:
+                      print(f"Failed to fetch: {url}")
+                      break
+                  results.extend(resp.json())
+                  url = resp.links.get('next', {}).get('url')
+              return results
+
+          prs = get_all_pages(f"{api_base}/pulls?state=all&per_page=100")
+
+          wb = openpyxl.Workbook()
+          ws1 = wb.active
+          ws1.title = "PR Details"
+          ws1.append([
+              "PR Number", "Title", "Author", "Created At", "Merged At",
+              "Review Count", "Reviewers", "Review Dates"
+          ])
+
+          # Track reviews per reviewer
+          reviewer_stats = defaultdict(lambda: {"count": 0, "prs": set()})
+
+          for pr in prs:
+              pr_number = pr["number"]
+              pr_title = pr["title"]
+              pr_author = pr["user"]["login"]
+              created_at = pr["created_at"]
+              merged_at = pr["merged_at"] or ""
+              reviews_url = f"{api_base}/pulls/{pr_number}/reviews"
+              reviews = get_all_pages(reviews_url)
+
+              reviewers = set()
+              review_dates = []
+              for review in reviews:
+                  if review["user"]:
+                      reviewers.add(review["user"]["login"])
+                      reviewer_stats[review["user"]["login"]]["count"] += 1
+                      reviewer_stats[review["user"]["login"]]["prs"].add(pr_number)
+                      review_dates.append(review["submitted_at"])
+
+              ws1.append([
+                  pr_number, pr_title, pr_author, created_at, merged_at,
+                  len(reviews), ", ".join(reviewers), ", ".join(review_dates)
+              ])
+
+          # Sheet 2 - Reviewer Stats
+          ws2 = wb.create_sheet(title="Reviewer Summary")
+          ws2.append(["Reviewer", "Total Reviews", "PRs Reviewed"])
+
+          for reviewer, stats in reviewer_stats.items():
+              ws2.append([
+                  reviewer, stats["count"], ", ".join(map(str, stats["prs"]))
+              ])
+
+          wb.save("output/pr_review_report.xlsx")
+          EOF
+
+      - name: Upload PR Review Excel Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-review-report
+          path: output/pr_review_report.xlsx
